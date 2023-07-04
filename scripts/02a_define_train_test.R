@@ -117,8 +117,5 @@ for (y in seq_along(years)) {
   
   save(train_df, val_df, test_df, file = paste0("data/train_test_",years[[y]],".Rdata"))
   
-  # call modelling function
-  #source("functions/fit_ensembles.R")
-  
 }
 
