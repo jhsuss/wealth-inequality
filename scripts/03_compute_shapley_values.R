@@ -269,7 +269,6 @@ shap <- Predictor$new(
 
 test <- test_df %>%
   filter(net_wealth <= 0) %>% 
-  #mutate(have_wealth = ifelse(net_wealth == 0, "zero", "negative")) %>%
   select(
     -net_wealth, -have_wealth, -wealth_gross, -debt_total
   ) 
