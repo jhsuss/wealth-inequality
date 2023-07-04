@@ -1,6 +1,8 @@
 library(haven)
 library(tidyverse)
 
+# SCF+ data downloaded from supplementary materials section of Kuhn et al (2018) paper: 
+# https://www.journals.uchicago.edu/doi/suppl/10.1086/708815/suppl_file/20180436data.zip 
 scf <- read_dta("data/SCF_plus.dta")
 
 inc_vars <- c("tinc","incws","incwsse", "inctrans","inccap")
@@ -43,9 +45,7 @@ impute_summary <- scf %>%
     ~ mean(., na.rm = T)
   ) %>%
   ungroup
-# ^ More than 50% of households have some wealth component which is imputed!  
-  
-  
+
 # tidy data for modelling
 scf_tidy <- scf %>% 
   # aggregate to the household level
@@ -103,18 +103,6 @@ scf_tidy <- scf_tidy %>%
     yearmerge, 
     everything()
   ) 
-
-# add states
-# scf_states <- haven::read_dta("data/SCF_States.dta")
-# 
-# scf_tidy <- scf_tidy %>% 
-#   left_join(
-#     scf_states %>% 
-#       filter(impnum == 1) %>% 
-#       select(
-#         state,id
-#       )
-#   ) 
 
 save(scf_tidy, file = "data/scf_tidy.Rdata")
 
