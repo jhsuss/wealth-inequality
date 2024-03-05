@@ -1,4 +1,4 @@
-# GEOWEALTH: Spatial wealth inequality data for the United States, 1960-2020
+# GEOWEALTH-US: Spatial wealth inequality data for the United States, 1960-2020
 
 This repo contains the code used to develop the GEOWEALTH dataset. 
 
