@@ -2,15 +2,15 @@ library(tidyverse)
 
 year <- 2020
 
-load("data/train_test_",year,".Rdata")
+load(paste0("data/train_test_",year,".Rdata"))
 
-load("data/Shapley_values_binary.Rdata")
+load("data/shapley_values_binary.Rdata")
 phi_bin <- phi
 
-load("data/Shapley_values_pos.Rdata")
+load("data/shapley_values_pos.Rdata")
 phi_pos <- phi
 
-load("data/Shapley_values_neg.Rdata")
+load("data/shapley_values_neg.Rdata")
 phi_neg <- phi
 
 # Shapley values overall
@@ -143,7 +143,7 @@ tmp <- bind_rows(
     mutate(level = "Households between $0 and $25k")
   ) 
 
-fig_pos_extra <- ggplot(
+fig_pos_subset <- ggplot(
  tmp %>% 
    mutate(
      var = ifelse(var == "married_full","marst",var),
@@ -211,28 +211,7 @@ fig_neg <- ggplot(
 
 
 
-save(
-  phi_bin_total,
-  phi_pos_total,
-  phi_neg_total,
-  file = "data/figs_shapley_values.Rdata"
-)
-
 fig_shap <- cowplot::plot_grid(fig_bin,fig_pos,fig_neg, nrow= 1) 
 
-
-ggsave(
-  fig_shap,
-  width = 12, height = 9,
-  units = "in",
-  dpi = 300,
-  file = "figures/fig_shapley.png"
-)
-
-ggsave(
-  fig_pos_extra,
-  width = 12, height = 9,
-  units = "in",
-  dpi = 300,
-  file = "figures/fig_shapley_extra.png"
-)
+fig_shap
+fig_pos_subset

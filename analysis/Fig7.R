@@ -86,12 +86,12 @@ fig_pos <- ggplot(
 ) + 
   geom_point(alpha = 0.3) + 
   geom_abline(
-    size = 1.1,
+    size = 1.2,
     slope = 1, 
-    color = "dark red", 
+    color = "dark orange", 
     linetype = "dashed"
   ) + 
-  theme_minimal(base_size = 18) +
+  theme_minimal(base_size = 20) +
   labs(
     x = "Actual net wealth (log)", 
     y = "Predicted net wealth (log)",
@@ -132,12 +132,12 @@ fig_neg <- ggplot(
 ) + 
   geom_point(alpha = 0.3) + 
   geom_abline(
-    size = 1.1,
+    size = 1.2,
     slope = 1, 
-    color = "dark red", 
+    color = "dark orange", 
     linetype = "dashed"
   ) + 
-  theme_minimal(base_size = 18) +
+  theme_minimal(base_size = 20) +
   labs(
     x = "Actual net wealth (inverse hyperbolic sine)", 
     y = "Predicted net wealth (inverse hyperbolic sine)",
@@ -149,10 +149,4 @@ fig_neg <- ggplot(
 
 fig_psid <- cowplot::plot_grid(fig_pos, fig_neg, nrow = 1) 
 
-
-ggsave(fig_psid,
-       width = 12, height = 9,
-       units = "in",
-       dpi = 300,
-       file = "figures/figs_validation_PSID.png"
-       )
+fig_psid

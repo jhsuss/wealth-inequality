@@ -1,17 +1,14 @@
+##### Comparison with SIPP state-level wealth estimates --------
+
 library(tidyverse)
 
-##### SIPP state-level wealth estimates 
-path <- ""
+load("data/wealth_inequality.Rdata")
 
-load(paste0(path, "wealth_inequality.Rdata"))
-
-
-path <- "C:/Users/326392/Documents/wealth-inequality/"
-
+# SIPP data downloaded from: https://www.census.gov/topics/income-poverty/wealth/data/tables.2020.List_2110684178.html#list-tab-List_2110684178 
 sipp20 <- read_csv(
-  paste0(path,"data/state_wealth_estimates_2020.csv"),
+  "data/state_wealth_estimates_2020.csv",
   na = c("(B)")
-  )
+)
 
 sipp20 <- sipp20 %>% 
   left_join(
@@ -24,7 +21,7 @@ sipp20 <- sipp20 %>%
         state,
         matches("^(mean|median)$")
       )
-    ) 
+  ) 
 
 cor_coef <- cor(
   sipp20$sipp_mean, 
@@ -34,14 +31,14 @@ cor_coef <- cor(
 fig_sipp_mean <- ggplot(
   sipp20,
   aes(x = mean, y = sipp_mean)
-  ) +
+) +
   geom_point() + 
   geom_smooth(method = "lm", color = "dark orange") +
   labs(y = "Mean (SIPP)", 
        x = "Mean (Census imputed)",
-       #title = "State mean wealth comparison (2020)",
        subtitle = paste0("r = ", round(cor_coef,2))
   ) + 
+  scale_x_continuous(labels = scales::label_scientific()) +
   theme_minimal(base_size = 14) 
 
 cor_coef <- cor(
@@ -52,7 +49,7 @@ cor_coef <- cor(
 fig_sipp_median <- ggplot(
   sipp20,
   aes(x = median, y = sipp_median)
-  ) +
+) +
   geom_point() + 
   geom_smooth(method = "lm", color = "dark orange") +
   labs(y = "Median (SIPP)", 
@@ -60,16 +57,11 @@ fig_sipp_median <- ggplot(
        #title = "State median wealth comparison (2020)",
        subtitle = paste0("r = ", round(cor_coef,2))
   ) + 
+  scale_x_continuous(labels = scales::label_scientific()) +
   theme_minimal(base_size = 14) 
 
 fig_sipp <- cowplot::plot_grid(
   fig_sipp_mean, fig_sipp_median, nrow = 1
 )
 
-ggsave(fig_sipp,
-       width = 12, height = 9,
-       units = "in",
-       dpi = 300,
-       file = paste0(path,"figures/fig_validation_sipp_mean_median.png"))
-
-
+fig_sipp

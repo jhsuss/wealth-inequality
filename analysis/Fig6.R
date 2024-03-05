@@ -1,5 +1,5 @@
 library(tidyverse)
-library(pROC)
+#library(pROC)
 
 year <- 2020
 
@@ -61,16 +61,16 @@ fig_pos <- ggplot(
   ) + 
   geom_point(alpha = 0.3) + 
   geom_abline(
-    size = 1.1,
+    size = 1.2,
     slope = 1, 
-    color = "dark red", 
+    color = "dark orange", 
     linetype = "dashed"
   ) + 
-  theme_minimal(base_size = 18) +
+  theme_minimal(base_size = 20) +
   labs(
     x = "Actual net wealth (log)", 
     y = "Predicted net wealth (log)",
-    caption = "Positive wealth"#paste0("Positive wealth", "\n", "RMSE = ",str_extract(round(rmse_pos,3),".{4}"))
+    caption = "Positive wealth"
   ) 
 
 
@@ -79,6 +79,7 @@ fig_pos <- ggplot(
 
 test_neg <- test_df %>%
   filter(net_wealth < 0)
+
 # level 1 predctions
 preds_neg <- cbind(
   test_neg,
@@ -105,25 +106,19 @@ fig_neg <- ggplot(
 ) + 
   geom_point(alpha = .3) + 
   geom_abline(
-    size = 1.1,
+    size = 1.2,
     slope = 1, 
-    color = "dark red", 
+    color = "dark orange", 
     linetype = "dashed"
   ) + 
-  theme_minimal(base_size = 18) +
+  theme_minimal(base_size = 20) +
   labs(
     x = "Actual net wealth (inverse hyperbolic sine)", 
     y = "Predicted net wealth (inverse hyperbolic sine)",
-    caption = "Negative wealth" #paste0("Negative wealth", "\n", "RMSE = ",round(rmse_neg,2))
+    caption = "Negative wealth" 
   )
 
 
 figs_test_sample <- cowplot::plot_grid(fig_pos,fig_neg, nrow = 1)
 
-ggsave(figs_test_sample,
-       width = 12, height = 9,
-       units = "in",
-       dpi = 300,
-       file = "figures/figs_test_sample.png"
-       )
-
+figs_test_sample
