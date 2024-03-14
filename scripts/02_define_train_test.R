@@ -1,5 +1,5 @@
 
-# script to define and save train and test samples 
+##### script to define and save train and test samples for the various census years
 
 library(tidyverse)
 library(tictoc)
@@ -7,9 +7,9 @@ load("data/scf_tidy_full.Rdata")
 source("scripts/census_var_availability.R")
 
 years <- c(
-  2020,  
-  2000,
-  rev(seq(1940, 1980, 10))
+  seq(1940, 1980, 10),
+  2000,  
+  2020
   )
 
 for (y in seq_along(years)) {
@@ -40,7 +40,7 @@ for (y in seq_along(years)) {
       )
   }
   
-  # 1980 mortgage payments are amalgamated into 1 entry
+  # 1980 mortgage payment amount are amalgamated into 1 variable
   if (years[[y]] == 1980) {
     
     df <- df %>%
