@@ -1,9 +1,13 @@
-#####################################
-###### SCRIPT TO TRAIN MODELS #######
-#####################################
+library(tictoc) # keep track of time for fitting
+library(caret)
+library(tidyverse)
+
+wealth_debt <- c("wealth_gross","debt_total")
+path <- "models/"
 
 # method for choosing hyperparameters
-my_control <- trainControl(
+source("functions/binary_summary.R")
+binary_control <- trainControl(
   method = "cv",
   number = 5,
   allowParallel = T,
@@ -11,10 +15,12 @@ my_control <- trainControl(
   classProbs = T,
   savePredictions = "final",
   sampling = "up", # upsample minority class
-  summaryFunction = twoClassSummary # metric = AUC
+  # multiple stats suitable for imbalanced data, 
+  # including brier and PR AUC
+  summaryFunction = binary_summary 
 )
 
-ctrl <- trainControl(
+continuous_ctrl <- trainControl(
   method = "cv",
   number = 5,
   allowParallel = T,
@@ -22,7 +28,7 @@ ctrl <- trainControl(
   savePredictions = "final"
 )
 
-# sample for positive and negative models
+
 train_pos <- train_df %>%
   filter(
     have_wealth == "yes"
@@ -40,120 +46,125 @@ train_0 <- train_df %>%
 train_neg <- train_df %>%
   filter(
     net_wealth < 0
-  ) %>%
+    ) %>%
   mutate(net_wealth = asinh(net_wealth)) %>%
   na.omit 
 
 
-wealth_debt <- c("wealth_gross","debt_total")
-
-
-# set seed to reproduce models
-set.seed(2828*years[[y]])
-
-##### BINARY #######
+##### BINARY
 
 ## RF
 tic("rf done")
+set.seed(2828*years[[y]])
 mod_rf_bin <- train(
   y = train_df$have_wealth,
   x = train_df %>% select(-have_wealth, -net_wealth, -any_of(wealth_debt)), 
-  trControl = my_control,
+  trControl = binary_control,
   method = "ranger", 
   tuneLength = 10, 
   keep.inbag = TRUE,
+  metric = "Brier",
+  maximize = F,
   importance = "impurity"
 )
-save(mod_rf_bin, file =  paste0("models/mod_rf_bin_",years[[y]],".Rdata"))
+save(mod_rf_bin, file =  paste0("models/mod_rf_bin",years[[y]],".Rdata"))
 toc()
 
 
 ## SVM
 tic("svm done")
+set.seed(2828*years[[y]])
 mod_svm_bin <- train(
   have_wealth ~ ., 
   data = train_df %>% 
     select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
   method = "svmRadial",
+  metric = "Brier",
+  maximize = F,
   tuneLength = 10,
   preProcess = c("scale","center")
 )
-save(mod_svm_bin, file =  paste0("models/mod_svm_bin_",years[[y]],".Rdata"))
+save(mod_svm_bin, file =  paste0("models/mod_svm_bin",years[[y]],".Rdata"))
 toc()
 
 
 ## KNN
 tic("knn done")
+set.seed(2828*years[[y]])
 mod_knn_bin <- train(
   have_wealth ~ .,
   data = train_df %>%
     select(-net_wealth,-any_of(wealth_debt)),
-  trControl = trainControl(
-    method = "cv",
-    number = 5,
-    allowParallel = T,
-    classProbs = T,
-    savePredictions = "final",
-    sampling = "up", # upsample minority class
-    summaryFunction = twoClassSummary # metric = AUC
-  ),
-  method = "knn", 
-  tuneGrid = expand.grid(
-    k = c(5,25,100,250)
-  ),
+  trControl = binary_control,
+  method = "kknn", # changed from kknn
+  metric = "Brier",
+  maximize = F,
+  tuneLength = 10,
   preProcess = c("scale","center")
 )
-save(mod_knn_bin, file =  paste0("models/mod_knn_bin_",years[[y]],".Rdata"))
+save(mod_knn_bin, file =  paste0(path,"models/mod_knn_bin",years[[y]],".Rdata"))
 toc()
 
 ## Regression models
 mod_glm_bin <- train(
   have_wealth ~ ., 
   data = train_df %>% select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
+  metric = "Brier",
+  maximize = F,
   method = "glm"
 )
 
+set.seed(2828*years[[y]])
 mod_lasso_bin <- train(
   have_wealth ~ .,
   data = train_df %>% select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
+  metric = "Brier",
+  maximize = F,
   method = "glmnet",
   tuneLength = 10
 )
 
-save(mod_glm_bin, mod_lasso_bin, file = paste0("models/mod_glm_bin_",years[[y]],".Rdata"))
+save(mod_glm_bin, mod_lasso_bin, file = paste0("models/mod_glm_bin",years[[y]],".Rdata"))
 
 ## Boosted trees
 tic("xgb done")
+set.seed(2828*years[[y]])
 mod_xgb_bin <- train(
   have_wealth ~ ., 
   data = train_df %>% 
     select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
   method="xgbDART",
+  metric = "Brier",
+  maximize = F,
   tuneLength = 10
+  
 )
-save(mod_xgb_bin, file = paste0("models/mod_xgb_bin_",years[[y]],".Rdata"))
+save(mod_xgb_bin, file = paste0("models/mod_xgb_bin",years[[y]],".Rdata"))
 toc()
 
 ## NEURAL NET
 tic("net done")
+set.seed(2828*years[[y]])
 mod_net_bin <- train(
   have_wealth ~ .,
   data = train_df %>% 
     select(-net_wealth, -any_of(wealth_debt)),
   method = "nnet",
-  trControl = my_control,
+  trControl = binary_control,
   tuneLength = 10,
   preProcess = c("scale","center"),
   MaxNWts = 2000,
   maxit = 200, 
+  metric = "Brier",
+  maximize = F,
   trace = F
 )
 
-save(mod_net_bin, file = paste0("models/mod_net_bin_",years[[y]],".Rdata"))
+save(mod_net_bin, file = paste0("models/mod_net_bin",years[[y]],".Rdata"))
 toc()
 
 
@@ -183,32 +194,43 @@ mod_ens_lm_bin <- train(
   y ~ ., 
   data = preds_val,
   method = "glm",
-  metric = "Kappa"
+  tuneLength = 10,
+  trControl = binary_control,
+  metric = "Brier",
+  maximize = F
 )
 
+set.seed(2828*years[[y]])
+mod_ens_lasso_bin <- train(
+  y ~ ., 
+  data = preds_val,
+  method = "glmnet",
+  tuneLength = 10,
+  trControl = binary_control,
+  metric = "Brier",
+  maximize = F
+)
+
+
 save(
-  mod_ens_lm_bin, 
-  file = paste0("models/mod_ensemble_bin_",years[[y]],".Rdata")
+  mod_ens_lm_bin, mod_ens_lasso_bin,
+  file = paste0("models/mod_ensemble_bin",years[[y]],".Rdata")
   
 )
 toc()
 
-
-####################
-##### POSITIVE #####
-####################
-
+##### POSITIVE
 tic("rf pos done")
 mod_rf_pos <- train(
   y = train_pos$net_wealth,
   x = train_pos %>% select(-net_wealth,-any_of(wealth_debt)),
   method = "ranger",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   keep.inbag = TRUE,
   importance = "impurity"
 )
-save(mod_rf_pos, file = paste0("models/mod_rf_pos_",years[[y]],".Rdata"))
+save(mod_rf_pos, file = paste0("models/mod_rf_pos",years[[y]],".Rdata"))
 toc()
 
 
@@ -219,16 +241,16 @@ mod_net_pos <- train(
   data = train_pos %>% 
     select(-any_of(wealth_debt)),
   method = "nnet",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   preProcess = c("scale","center"),
-  maxit = 200, # bump up max iterations from 100 to 200
+  maxit = 200, 
   MaxNWts = 2000,
   linout = T,
   trace = F
 )
 
-save(mod_net_pos, file = paste0("models/mod_net_pos_",years[[y]],".Rdata"))
+save(mod_net_pos, file = paste0("models/mod_net_pos",years[[y]],".Rdata"))
 toc()
 
 ## Boosted trees
@@ -237,10 +259,10 @@ mod_xgb_pos <- train(
   net_wealth ~ ., 
   data = train_pos %>% select(-any_of(wealth_debt)),
   method="xgbDART",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10
 )
-save(mod_xgb_pos, file = paste0("models/mod_xgb_pos_",years[[y]],".Rdata"))
+save(mod_xgb_pos, file = paste0("models/mod_xgb_pos",years[[y]],".Rdata"))
 toc()
 
 ## SVM
@@ -249,12 +271,12 @@ mod_svm_pos <- train(
   net_wealth ~ ., 
   data = train_pos %>% 
     select(-any_of(wealth_debt)),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "svmRadial",
   tuneLength = 10,
   preProcess = c("scale","center")
 )
-save(mod_svm_pos, file =  paste0("models/mod_svm_pos_",years[[y]],".Rdata"))
+save(mod_svm_pos, file =  paste0("models/mod_svm_pos",years[[y]],".Rdata"))
 toc()
 
 tic("knn pos done")
@@ -268,32 +290,32 @@ mod_knn_pos <- train(
     allowParallel = T,
     savePredictions = "final"
   ),
-  method = "knn",
+  method = "knn", 
   tuneGrid = expand.grid(
     k = c(5,25,100,250)
   ),
   preProcess = c("scale","center")
 )
-save(mod_knn_pos, file =  paste0("models/mod_knn_pos_",years[[y]],".Rdata"))
+save(mod_knn_pos, file =  paste0(path,"models/mod_knn_pos",years[[y]],".Rdata"))
 toc()
 
 ## Regression
 mod_glm_pos <- train(
   net_wealth ~ ., 
   data = train_pos %>% select(-any_of(wealth_debt)),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glm"
 )
 
 mod_lasso_pos <- train(
   net_wealth ~ .,
   data = train_pos %>% select(-any_of(wealth_debt)),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glmnet",
   tuneLength = 10
 )
 
-save(mod_glm_pos, mod_lasso_pos, file = paste0("models/mod_glm_pos_",years[[y]],".Rdata"))
+save(mod_glm_pos, mod_lasso_pos, file = paste0("models/mod_glm_pos",years[[y]],".Rdata"))
 
 val_pos <- val_df %>% filter(net_wealth > 0)
 preds_svm_pos <- predict(mod_svm_pos, val_pos)
@@ -320,22 +342,33 @@ mod_ens_lm_pos <- train(
   y ~ ., 
   data = preds_val,
   method = "lm",
-  trControl = ctrl
+  trControl = continuous_ctrl
+  )
+
+mod_ens_lasso_pos <- train(
+  y ~ .,
+  data = preds_val,
+  trControl = continuous_ctrl,
+  method = "glmnet",
+  tuneLength = 10
 )
 
 save(
-  mod_ens_lm_pos, 
+  mod_ens_lm_pos, mod_ens_lasso_pos, 
   file = paste0("models/mod_ensemble_pos_",years[[y]],".Rdata")
 )
 
 
 ##### ZERO/NEG binary
+
 tic("rf zero done")
 mod_rf_zero <- train(
   y = train_0$have_wealth,
   x = train_0 %>% select(-net_wealth, -have_wealth, -any_of(wealth_debt)),
-  trControl = my_control,
-  method = "ranger", 
+  trControl = binary_control,
+  method = "ranger",
+  metric = "Brier",
+  maximize = F, 
   tuneLength = 10, 
   keep.inbag = TRUE,
   importance = "impurity"
@@ -349,8 +382,10 @@ tic("xgb done")
 mod_xgb_zero <- train(
   have_wealth ~ ., 
   data = train_0 %>% select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
   method="xgbDART",
+  metric = "Brier",
+  maximize = F,
   tuneLength = 10
   
 )
@@ -364,11 +399,13 @@ mod_net_zero <- train(
   data = train_0 %>% 
     select(-net_wealth, -any_of(wealth_debt)),
   method = "nnet",
-  trControl = my_control,
+  trControl = binary_control,
   tuneLength = 10,
   preProcess = c("scale","center"),
   MaxNWts = 2000,
   maxit = 200, 
+  metric = "Brier",
+  maximize = F,
   trace = F
 )
 
@@ -380,8 +417,10 @@ mod_svm_zero <- train(
   have_wealth ~ ., 
   data = train_0 %>% 
     select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
   method = "svmRadial",
+  metric = "Brier",
+  maximize = F,
   tuneLength = 10,
   preProcess = c("scale","center")
 )
@@ -395,36 +434,30 @@ mod_knn_zero <- train(
   have_wealth ~ .,
   data = train_0 %>%
     select(-net_wealth,-any_of(wealth_debt)),
-  trControl = trainControl(
-    method = "cv",
-    number = 5,
-    allowParallel = T,
-    classProbs = T,
-    savePredictions = "final",
-    sampling = "up", # upsample minority class
-    summaryFunction = twoClassSummary # metric = AUC
-  ),
-  method = "knn",
-  tuneGrid = expand.grid(
-    k = c(5,25,100,250)
-  ),
+  trControl = binary_control,
+  method = "knn", 
+  tuneLength = 10,
+  metric = "Brier",
+  maximize = F,
   preProcess = c("scale","center")
 )
-save(mod_knn_zero, file =  paste0("models/mod_knn_zero_",years[[y]],".Rdata"))
+save(mod_knn_zero, file =  paste0(path,"models/mod_knn_zero_",years[[y]],".Rdata"))
 toc()
 
 ## Regression models
 mod_glm_zero <- train(
   have_wealth ~ ., 
   data = train_0 %>% select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
   method = "glm"
 )
 
 mod_lasso_zero <- train(
   have_wealth ~ .,
   data = train_0 %>% select(-net_wealth,-any_of(wealth_debt)),
-  trControl = my_control,
+  trControl = binary_control,
+  metric = "Brier",
+  maximize = F,
   method = "glmnet",
   tuneLength = 10
 )
@@ -471,17 +504,14 @@ save(
   
 )
 
-#####################
+
 ##### NEGATIVE WEALTH
-#####################
-
-
 tic("rf neg done")
 mod_rf_neg <- train(
   y = train_neg$net_wealth,
   x = train_neg %>% select(-net_wealth, -have_wealth, -any_of(wealth_debt)),
   method = "ranger",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   keep.inbag = TRUE,
   importance = "impurity"
@@ -498,7 +528,7 @@ mod_net_neg <- train(
   data = train_neg %>% 
     select(-any_of(wealth_debt),-have_wealth),
   method = "nnet",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   preProcess = c("scale","center"),
   maxit = 200, 
@@ -515,7 +545,7 @@ tic("xgb neg done")
 mod_xgb_neg <- train(
   net_wealth ~ ., 
   data = train_neg %>% select(-any_of(wealth_debt),-have_wealth),
-  trControl =  ctrl, 
+  trControl =  continuous_ctrl, 
   method="xgbDART",
   tuneLength = 10
 )
@@ -527,7 +557,7 @@ mod_svm_neg <- train(
   net_wealth ~ ., 
   data = train_neg %>% 
     select(-any_of(wealth_debt),-have_wealth),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "svmRadial",
   tuneLength = 10,
   preProcess = c("scale","center")
@@ -554,21 +584,21 @@ mod_knn_neg <- train(
   ),
   preProcess = c("scale","center")
 )
-save(mod_knn_neg, file =  paste0("models/mod_knn_neg_",years[[y]],".Rdata"))
+save(mod_knn_neg, file =  paste0(path,"models/mod_knn_neg_",years[[y]],".Rdata"))
 toc()
 
 ## Regression
 mod_glm_neg <- train(
   net_wealth ~ ., 
   data = train_neg %>% select(-any_of(wealth_debt),-have_wealth),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glm"
 )
 
 mod_lasso_neg <- train(
   net_wealth ~ .,
   data = train_neg %>% select(-any_of(wealth_debt),-have_wealth),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glmnet",
   tuneLength = 10
 )
@@ -601,7 +631,7 @@ mod_ens_lm_neg <- train(
   y ~ ., 
   data = preds_val,
   method = "lm",
-  trControl = ctrl
+  trControl = continuous_ctrl
 )
 
 save(
@@ -615,7 +645,7 @@ mod_rf_ihs <- train(
   y = asinh(train_df$net_wealth),
   x = train_df %>% select(-net_wealth,-have_wealth, -any_of(wealth_debt)),
   method = "ranger",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   keep.inbag = TRUE,
   importance = "impurity"
@@ -631,7 +661,7 @@ mod_net_ihs <- train(
   data = train_df %>% 
     select(-any_of(wealth_debt),-have_wealth),
   method = "nnet",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   preProcess = c("scale","center"),
   maxit = 200, 
@@ -649,7 +679,7 @@ mod_xgb_ihs <- train(
   asinh(net_wealth) ~ ., 
   data = train_df %>% select(-any_of(wealth_debt),-have_wealth),
   method="xgbDART",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10
 )
 save(mod_xgb_ihs, file = paste0("models/mod_xgb_ihs_",years[[y]],".Rdata"))
@@ -658,14 +688,14 @@ toc()
 mod_glm_ihs <- train(
   asinh(net_wealth) ~ ., 
   data = train_df %>% select(-any_of(wealth_debt), -have_wealth),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glm"
 )
 
 mod_lasso_ihs <- train(
   asinh(net_wealth) ~ .,
   data = train_df %>% select(-any_of(wealth_debt), -have_wealth),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glmnet",
   tuneLength = 10
 )
@@ -677,7 +707,7 @@ mod_svm_ihs <- train(
   asinh(net_wealth) ~ ., 
   data = train_df %>% 
     select(-any_of(wealth_debt),-have_wealth),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "svmRadial",
   tuneLength = 10,
   preProcess = c("scale","center")
@@ -704,7 +734,7 @@ mod_knn_ihs <- train(
   ),
   preProcess = c("scale","center")
 )
-save(mod_knn_ihs, file =  paste0("models/mod_knn_ihs_",years[[y]],".Rdata"))
+save(mod_knn_ihs, file =  paste0(path,"models/mod_knn_ihs_",years[[y]],".Rdata"))
 toc()
 
 
@@ -731,7 +761,7 @@ mod_ens_lm_ihs <- train(
   y ~ ., 
   data = preds_ihs,
   method = "lm",
-  trControl = ctrl
+  trControl = continuous_ctrl
 )
 
 save(
@@ -741,7 +771,6 @@ save(
 
 
 ##### wealth and debt
-
 train_wealth_debt <- train_df %>% 
   mutate_at(
     vars(wealth_gross, debt_total),
@@ -753,7 +782,7 @@ mod_rf_wealth <- train(
   y = train_wealth_debt$wealth_gross,
   x = train_wealth_debt %>% select(-net_wealth,-have_wealth, -any_of(wealth_debt)),
   method = "ranger",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   keep.inbag = TRUE,
   importance = "impurity"
@@ -768,7 +797,7 @@ mod_net_wealth <- train(
   wealth_gross ~ .,
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -debt_total),
   method = "nnet",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   preProcess = c("scale","center"),
   maxit = 200, 
@@ -786,8 +815,8 @@ mod_xgb_wealth <- train(
   wealth_gross ~ .,
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -debt_total),
   method="xgbDART",
-  trControl = trainControl(method="none"), 
-  tuneGrid = mod_xgb_wealth$bestTune
+  trControl = continuous_ctrl,
+  tuneLength = 10
 )
 save(mod_xgb_wealth, file = paste0("models/mod_xgb_wealth_",years[[y]],".Rdata"))
 toc()
@@ -795,14 +824,14 @@ toc()
 mod_glm_wealth <- train(
   wealth_gross ~ ., 
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -debt_total),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glm"
 )
 
 mod_lasso_wealth <- train(
   wealth_gross ~ .,
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -debt_total),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glmnet",
   tuneLength = 10
 )
@@ -813,9 +842,8 @@ tic("svm wealth done")
 mod_svm_wealth <- train(
   wealth_gross ~ ., 
   data = train_wealth_debt %>% 
-    select(-net_wealth,-have_wealth, -debt_total) %>%
-    sample_frac(0.3),
-  trControl = ctrl,
+    select(-net_wealth,-have_wealth, -debt_total),
+  trControl = continuous_ctrl,
   method = "svmRadial",
   tuneLength = 10,
   preProcess = c("scale","center")
@@ -836,10 +864,10 @@ mod_knn_wealth <- train(
   method = "knn", 
   tuneGrid = expand.grid(
     k = c(5,25,100,250)
-  ),
+    ),
   preProcess = c("scale","center")
 )
-save(mod_knn_wealth, file =  paste0("models/mod_knn_wealth_",years[[y]],".Rdata"))
+save(mod_knn_wealth, file =  paste0(path,"models/mod_knn_wealth_",years[[y]],".Rdata"))
 toc()
 
 preds_rf_wealth <- predict(mod_rf_wealth, val_df)
@@ -865,7 +893,7 @@ mod_ens_lm_wealth <- train(
   y ~ ., 
   data = preds_wealth,
   method = "lm",
-  trControl = ctrl
+  trControl = continuous_ctrl
 )
 
 save(
@@ -880,7 +908,7 @@ mod_rf_debt <- train(
   y = train_wealth_debt$debt_total,
   x = train_wealth_debt %>% select(-net_wealth,-have_wealth, -any_of(wealth_debt)),
   method = "ranger",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   keep.inbag = TRUE,
   importance = "impurity"
@@ -896,7 +924,7 @@ mod_net_debt <- train(
   debt_total ~ .,
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -wealth_gross),
   method = "nnet",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10,
   preProcess = c("scale","center"),
   maxit = 200, 
@@ -914,7 +942,7 @@ mod_xgb_debt <- train(
   debt_total ~ .,
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -wealth_gross),
   method="xgbDART",
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   tuneLength = 10
 )
 save(mod_xgb_debt, file = paste0("models/mod_xgb_debt_",years[[y]],".Rdata"))
@@ -923,14 +951,14 @@ toc()
 mod_glm_debt <- train(
   debt_total ~ ., 
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -wealth_gross),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glm"
 )
 
 mod_lasso_debt <- train(
   debt_total ~ .,
   data = train_wealth_debt %>% select(-net_wealth,-have_wealth, -wealth_gross),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "glmnet",
   tuneLength = 10
 )
@@ -942,7 +970,7 @@ mod_svm_debt <- train(
   debt_total ~ ., 
   data = train_wealth_debt %>% 
     select(-net_wealth,-have_wealth, -wealth_gross),
-  trControl = ctrl,
+  trControl = continuous_ctrl,
   method = "svmRadial",
   tuneLength = 10,
   preProcess = c("scale","center")
@@ -960,13 +988,13 @@ mod_knn_debt <- train(
     allowParallel = T,
     savePredictions = "final"
   ),
-  method = "knn",
+  method = "knn", 
   tuneGrid = expand.grid(
     k = c(5,25,100,250)
   ),
   preProcess = c("scale","center")
 )
-save(mod_knn_debt, file =  paste0("models/mod_knn_debt_",years[[y]],".Rdata"))
+save(mod_knn_debt, file =  paste0(path,"models/mod_knn_debt_",years[[y]],".Rdata"))
 toc()
 
 
@@ -993,7 +1021,7 @@ mod_ens_lm_debt <- train(
   y ~ ., 
   data = preds_debt,
   method = "lm",
-  trControl = ctrl
+  trControl = continuous_ctrl
 )
 
 save(
