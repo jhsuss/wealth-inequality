@@ -851,7 +851,7 @@ clean_census <- function(year,
   
   
   # save household-level data
-  save_path <- paste0("data/census_clean_",year,"_final.Rdata")
+  save_path <- paste0("data/census_clean_",year,".Rdata")
   save(census, topcoded, file = save_path)
   
   message("save complete for ", year)
