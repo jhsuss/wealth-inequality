@@ -1,6 +1,6 @@
 
 impute_census <- function(
-  year = 2000
+  year = NULL
 ) {
   
   library(tidyverse)
@@ -20,6 +20,7 @@ impute_census <- function(
   file_path <- paste0("data/census_clean_",year_census,".Rdata") 
   load(file_path)
   
+  # remove some strange obs which affect model fitting (additional categories)
   # 1 obs of 'other'
   if (year_census <= 1980 & year_census != 1950) {
     census <- census %>% 
@@ -42,9 +43,10 @@ impute_census <- function(
     "xgb",
     "ensemble"
   )
-  types <- c("bin","pos","zero","neg"
-             #,"ihs","wealth","debt"
-             )
+  # choose subset of models (omit IHS and wealth and debt models for time reasons)
+  types <- c(
+    "bin","pos","zero","neg"
+    )
   
   for (m in mods) {
     for (t in types) {
@@ -58,51 +60,11 @@ impute_census <- function(
     
   }  # end load models
   
-  # figure out which vars are topcode adjusted
-  load("data/topcodes.Rdata")
   
-  vars_flag <- topcodes %>% 
-    filter(year == year_census) %>% 
-    select_if(~ !any(is.na(.))) %>% 
-    select(
-      matches("_topcode")
-    ) %>% 
-    rename_all(
-      ~ str_remove(., "_topcode")
-    ) %>% 
-    select(!matches("incsupp")) %>% 
-    names
-  
-  if (year_census == 1940) {
-    vars_flag <- "incwage"
-  } else if (year_census == 1980) (
-    vars_flag <- vars_flag[-4]
-  ) else if (year_census == 1970) (
-    vars_flag <- vars_flag[-3]
-  ) else if (year_census == 1990) {
-    vars_flag <- vars_flag[-4]
-  }
-  
-  for (i in seq_along(vars_flag)) {
-    
-    census[[ paste0(vars_flag[[i]], "_adjust_flag") ]] <- ifelse(
-      census[[ vars_flag[[i]] ]] != census[[ paste0(vars_flag[[i]], "_new") ]],
-      1, 
-      0
-    )
-    
-  }
-  
-  census <- census %>%
-    mutate(
-      adjustments = rowSums(select(., contains("_adjust_flag")))
-    )
-  ##### end flag adding
-  
-  # keep only identifiers, geography and preds (can always merge back with census)
+  # keep identifiers, geography and preds
   ids <- c("sample", "serial", "year")
   geogs <- c("state", "statefip", "region_label", "puma", "czone", "metarea","sea","cntygp97","cntygp98")
-  demogs <- c( "house_tenure","house_value","house_value_new","educ_hrp","race","age")
+  demogs <- c( "house_tenure","house_value","house_value_new","educ_hrp","race","age", "ind_hrp", "occ_hrp", "sex", "household_size", "work_status")
   wgts <- c("hhwt","hwx")
   
   add <- census %>% 
@@ -115,34 +77,18 @@ impute_census <- function(
       matches("_flag$"), adjustments
     )
   
-  # split into more manageable chunks, only if nrow > 2e6?
-  if (year_census != 1950) {
-    
-    tmp <- census %>% 
-      group_split(sample, house_tenure, region_label) %>% 
-      map(
-        select,
-        sample, serial,
-        any_of(mod_rf_bin$trainingData %>% names), 
-        matches("_new")
-      ) 
-    
-    
-  } else {
-    
-    tmp <- census %>% 
-      group_split(
-        region_label
-      ) %>% 
-      map(
-        select,
-        sample, serial,
-        any_of(mod_rf_bin$trainingData %>% names), 
-        matches("_new")
-      ) 
-  }
+  # split into more manageable chunks for fitting models
+  tmp <- census %>% 
+    group_split(sample, region_label) %>% 
+    map(
+      select,
+      sample, serial,
+      any_of(mod_rf_bin$trainingData %>% names), 
+      matches("_new")
+    ) 
+
   rm(census)
-  
+
   # loop through census to make predictions
   census_list <- vector("list", length(tmp))
   
@@ -154,6 +100,7 @@ impute_census <- function(
       select(
         -any_of(vars_flag)
       ) %>% 
+      # rename for models
       rename_at(
         vars(matches("_new")),
         ~ str_replace(., "_new", "")
@@ -166,7 +113,7 @@ impute_census <- function(
     # loop through list of models
     ps_bin <- map(
       mget(
-        ls(pattern="^mod_.*(rf|svm|knn|net|glm|lasso|xgb)_bin")
+        ls(pattern="^mod_(rf|svm|knn|net|glm|lasso|xgb)_bin$")
         ),
       ~ predict(
         .,
@@ -180,7 +127,7 @@ impute_census <- function(
     
     ps_zero <- map(
       mget(
-        ls(pattern="^mod_.*(rf|svm|knn|net|glm|lasso|xgb)_zero")
+        ls(pattern="^mod_(rf|svm|knn|net|glm|lasso|xgb)_zero$")
       ),
       ~ predict(
         .,
@@ -194,7 +141,7 @@ impute_census <- function(
    
     ps_quant <- map(
       mget(
-        ls(pattern="^mod_.*(rf|svm|knn|net|glm|lasso|xgb)_(pos|neg)")
+        ls(pattern="^mod_(rf|svm|knn|net|glm|lasso|xgb)_(pos|neg)$")
       ),
       ~ predict(
         .,
@@ -207,7 +154,7 @@ impute_census <- function(
     
     ps_quant_new <- map(
       mget(
-        ls(pattern="^mod_.*(rf|svm|knn|net|glm|lasso|xgb)_(pos|neg)")
+        ls(pattern="^mod_(rf|svm|knn|net|glm|lasso|xgb)_(pos|neg)$")
       ),
       ~ predict(
         .,
@@ -218,6 +165,7 @@ impute_census <- function(
       bind_rows() %>%
       rename_all(~ str_replace(.,"^mod","preds")) 
     
+    # fit the ensemble models
     preds_ens_bin <- predict(mod_ens_lm_bin, ps_bin, type = "prob")$yes
     preds_ens_zero <- predict(mod_ens_lm_zero, ps_zero, type = "prob")$zero
     
@@ -230,25 +178,7 @@ impute_census <- function(
     ps_quant_new <- ps_quant_new %>% 
       rename_all( ~str_c(.,"_new"))
     
-    
-    ### other transformation predictions (just new census)
-    # ps_alt <- map(
-    #   mget(
-    #     ls(pattern="^mod_.*(rf|svm|knn|net|glm|lasso|xgb)_(ihs|wealth|debt)")
-    #   ),
-    #   ~ predict(
-    #     .,
-    #     tmp_new
-    #   )
-    # )
-    # ps_alt <- ps_alt %>% 
-    #   bind_rows() %>%
-    #   rename_all(~ str_replace(.,"^mod","preds"))
-    # 
-    #preds_ens_ihs <- predict(mod_ens_lm_ihs, ps_alt)
-    #preds_ens_wealth <- predict(mod_ens_lm_wealth, ps_alt)
-    #preds_ens_debt <- predict(mod_ens_lm_debt, ps_alt)
-    
+    # save subset of predictions
     census_list[[i]] <- tibble(
       sample = tmp_new$sample,
       serial = tmp_new$serial,
@@ -258,16 +188,11 @@ impute_census <- function(
       preds_ens_pos_new,
       preds_ens_zero,
       preds_ens_neg,
-      preds_ens_neg_new#,
-      
-      #preds_ens_ihs,
-      #preds_ens_wealth,
-      #preds_ens_debt
+      preds_ens_neg_new
       ) %>% 
       cbind(
-        # select level 1 predictions
+        # add subset of level 1 predictions
         ps_bin,
-        preds_rf_zero = ps_zero$preds_rf_zero,
         ps_quant,
         ps_quant_new
       )
@@ -281,6 +206,21 @@ impute_census <- function(
   # bind rows and add back in additional columns
   census <- census_list %>% 
     reduce(bind_rows) 
+  
+  # add LASSO ensemble (experimental)
+  preds_ens_pos_lasso <- census %>%
+    select(
+      matches("preds.*_pos_new")
+    ) %>%
+    rename_all(~str_replace_all(.,"_new","")) %>%
+    mutate(
+      preds_ens_pos_lasso = predict(mod_ens_lasso_pos,.)
+    ) %>%
+    .$preds_ens_pos_lasso
+  
+  
+  census <- census %>%
+    cbind(preds_ens_pos_lasso)
   
   census <- census %>% 
     left_join(add, by = c("sample","serial")) %>% 
@@ -323,19 +263,50 @@ impute_census <- function(
       se_neg
     )
 
+  
+  # load binary model threshold values
+  load("data/binary_thresholds.Rdata")
+  
+  ### calculate final household wealth prediction
+  ### 'pred_wealth_new' uses top-code adjusted variables
+  census <- census %>% 
+    mutate(
+      pred_wealth_new = case_when(
+        preds_ens_bin >= thresh ~ exp(preds_ens_pos_new),
+        preds_ens_bin < thresh & preds_ens_zero >= optim_thresh_0 ~ 0,
+        preds_ens_bin < thresh & preds_ens_zero < optim_thresh_0 ~ sinh(preds_ens_neg_new),
+      ),
+      
+      pred_wealth = case_when(
+        preds_ens_bin >= thresh ~ exp(preds_ens_pos),
+        preds_ens_bin < thresh & preds_ens_zero >= optim_thresh_0 ~ 0,
+        preds_ens_bin < thresh & preds_ens_zero < optim_thresh_0 ~ sinh(preds_ens_neg),
+      )
+    ) 
+  
+  # select set of variables
   census <- census %>%
     select(
       any_of(ids),
       any_of(geogs),
       matches("^inc"),
       any_of(demogs),
-      matches("^preds_|^se_"),
+      matches("^pred(s|)_|^se_"),
       any_of(wgts),
-      matches("_flag$"), adjustments
+      matches("_flag$"), 
+      adjustments,
+      
+      
     )
   
+  ## save final 
   save_path <- paste0("data/census_imputed_wealth_",year_census,".Rdata")
   save(census, file = save_path)
+  source("functions/save_final_imputed_wealth.R") # final bits to do for final imputed file  
+  
   message("imputation for census year ",year_census," complete")
+  
+  
+  
 }
 
