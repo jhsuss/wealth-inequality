@@ -1,8 +1,8 @@
 library(tidyverse)
 library(readxl)
-
+ 
 psid <- read_xlsx(
-  "//Mafp-nwsrv/data/Advanced Analytics/AA_sensitive/_People/Joel Suss/wealth-inequality/wealth-inequality-main/data/PSID_2019/J314575.xlsx"
+  "data/PSID_2019/J314575.xlsx"
   )
 
 # refine and select vars
